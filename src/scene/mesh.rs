@@ -1,9 +1,12 @@
-/// A GPU-resident mesh with vertex and index buffers.
+/// A GPU-resident mesh with vertex and index buffers, and optional per-mesh material.
 pub struct Mesh {
     pub vertex_buffer: wgpu::Buffer,
     pub index_buffer: wgpu::Buffer,
     pub num_indices: u32,
     pub name: String,
+    /// Per-mesh material bind group (texture + material uniform).
+    /// When `Some`, the renderer uses this instead of the shared default.
+    pub material_bind_group: Option<wgpu::BindGroup>,
 }
 
 impl Mesh {
@@ -32,6 +35,7 @@ impl Mesh {
             index_buffer,
             num_indices: indices.len() as u32,
             name: name.to_string(),
+            material_bind_group: None,
         }
     }
 }

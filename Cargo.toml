@@ -13,3 +13,7 @@ bytemuck = { version = "1.21", features = ["derive"] }
 glam = { version = "0.29", features = ["bytemuck"] }
 gltf = "1.4"
 image = "0.25"
+egui = "0.34"
+egui-wgpu = { version = "0.34", features = ["winit"] }
+egui-winit = "0.34"
+rfd = { version = "0.15", default-features = false, features = ["xdg-portal", "async-std"] }

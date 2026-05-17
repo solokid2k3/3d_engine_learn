@@ -60,8 +60,8 @@ impl OrbitController {
             distance,
 
             orbit_sensitivity: 0.005,
-            pan_sensitivity: 0.005,
-            zoom_speed: 0.5,
+            pan_sensitivity: 0.002,
+            zoom_speed: 0.15,
             fly_speed: 3.0,
 
             min_distance: 0.5,

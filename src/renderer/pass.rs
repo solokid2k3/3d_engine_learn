@@ -240,12 +240,15 @@ impl RenderState {
         self.depth_texture = Texture::create_depth_texture(device, width, height, "Depth");
     }
 
-    /// Render a single frame.
-    pub fn render(
+    /// Render the 3D scene into the given encoder. Returns the surface texture and view
+    /// so the caller can add additional overlay passes (e.g. egui) before submitting.
+    pub fn render_scene(
         &self,
         gpu: &GpuContext,
         camera_uniform: &CameraUniform,
         scene: &Scene,
+        encoder: &mut wgpu::CommandEncoder,
+        view: &wgpu::TextureView,
     ) {
         // Update camera uniform
         gpu.queue.write_buffer(
@@ -261,33 +264,11 @@ impl RenderState {
             bytemuck::cast_slice(&[scene.light_uniform]),
         );
 
-        let surface_texture = match gpu.surface.get_current_texture() {
-            wgpu::CurrentSurfaceTexture::Success(st) => st,
-            wgpu::CurrentSurfaceTexture::Suboptimal(st) => st,
-            wgpu::CurrentSurfaceTexture::Timeout | wgpu::CurrentSurfaceTexture::Occluded => {
-                return; // Skip this frame
-            }
-            wgpu::CurrentSurfaceTexture::Outdated | wgpu::CurrentSurfaceTexture::Lost => {
-                gpu.surface.configure(&gpu.device, &gpu.config);
-                return;
-            }
-            _ => return,
-        };
-        let view = surface_texture
-            .texture
-            .create_view(&wgpu::TextureViewDescriptor::default());
-
-        let mut encoder = gpu
-            .device
-            .create_command_encoder(&wgpu::CommandEncoderDescriptor {
-                label: Some("Render Encoder"),
-            });
-
         {
             let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("Main Render Pass"),
                 color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                    view: &view,
+                    view,
                     resolve_target: None,
                     ops: wgpu::Operations {
                         load: wgpu::LoadOp::Clear(wgpu::Color {
@@ -326,6 +307,14 @@ impl RenderState {
                 );
 
                 render_pass.set_bind_group(1, &self.transform_bind_group, &[]);
+
+                // Use per-mesh material bind group if present, else shared default
+                if let Some(ref mbg) = instance.mesh.material_bind_group {
+                    render_pass.set_bind_group(3, mbg, &[]);
+                } else {
+                    render_pass.set_bind_group(3, &self.material_bind_group, &[]);
+                }
+
                 render_pass.set_vertex_buffer(0, instance.mesh.vertex_buffer.slice(..));
                 render_pass.set_index_buffer(
                     instance.mesh.index_buffer.slice(..),
@@ -334,6 +323,38 @@ impl RenderState {
                 render_pass.draw_indexed(0..instance.mesh.num_indices, 0, 0..1);
             }
         }
+    }
+
+    /// Full render: scene + submit. Used when no overlay is needed.
+    pub fn render(
+        &self,
+        gpu: &GpuContext,
+        camera_uniform: &CameraUniform,
+        scene: &Scene,
+    ) {
+        let surface_texture = match gpu.surface.get_current_texture() {
+            wgpu::CurrentSurfaceTexture::Success(st) => st,
+            wgpu::CurrentSurfaceTexture::Suboptimal(st) => st,
+            wgpu::CurrentSurfaceTexture::Timeout | wgpu::CurrentSurfaceTexture::Occluded => {
+                return;
+            }
+            wgpu::CurrentSurfaceTexture::Outdated | wgpu::CurrentSurfaceTexture::Lost => {
+                gpu.surface.configure(&gpu.device, &gpu.config);
+                return;
+            }
+            _ => return,
+        };
+        let view = surface_texture
+            .texture
+            .create_view(&wgpu::TextureViewDescriptor::default());
+
+        let mut encoder = gpu
+            .device
+            .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                label: Some("Render Encoder"),
+            });
+
+        self.render_scene(gpu, camera_uniform, scene, &mut encoder, &view);
 
         gpu.queue.submit(std::iter::once(encoder.finish()));
         surface_texture.present();
