@@ -60,21 +60,14 @@ pub struct LightUniform {
 
 impl Default for LightUniform {
     fn default() -> Self {
-        let mut uniform = Self {
+        Self {
             dir_direction: [0.0, -1.0, -0.5, 1.0],
             dir_color: [1.0, 0.95, 0.9, 0.0],
             point_positions: [[0.0; 4]; 4],
             point_colors: [[0.0; 4]; 4],
             point_attenuation: [[1.0, 0.09, 0.032, 0.0]; 4],
             num_point_lights: [0.0; 4],
-        };
-
-        // Default: one warm point light
-        uniform.point_positions[0] = [3.0, 3.0, 3.0, 2.0];
-        uniform.point_colors[0] = [1.0, 0.85, 0.7, 0.0];
-        uniform.num_point_lights[0] = 1.0;
-
-        uniform
+        }
     }
 }
 

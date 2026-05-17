@@ -1,3 +1,4 @@
+pub mod ground;
 pub mod light;
 pub mod material;
 pub mod mesh;
@@ -12,6 +13,8 @@ use crate::scene::transform::Transform;
 pub enum MeshSource {
     /// Part of the hardcoded demo scene.
     Demo,
+    /// Permanent engine fixture (ground plane, etc.) — never removed by user.
+    EngineDefault,
     /// Loaded at runtime from a file. All primitives in one glTF share
     /// the same `group_id` so they can be removed as a unit.
     UserModel { group_id: u32, filename: String },

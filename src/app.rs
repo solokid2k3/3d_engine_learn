@@ -18,8 +18,9 @@ use crate::gui::panel::draw_light_panel;
 use crate::input::InputState;
 use crate::loader::gltf_loader::load_gltf;
 use crate::renderer::pass::RenderState;
+use crate::scene::ground::create_ground_plane;
 use crate::scene::transform::Transform;
-use crate::scene::{MeshSource, Scene};
+use crate::scene::{MeshInstance, MeshSource, Scene};
 
 /// Engine state that is initialized after the window is created.
 struct EngineState {
@@ -90,11 +91,24 @@ impl ApplicationHandler for App {
         let model_manager = ModelManager::new();
 
         // =============================================
-        // Build scene — ground plane only
+        // Build scene — ground plane with caro tiles
         // =============================================
-        let scene = Scene::new();
+        let mut scene = Scene::new();
 
-        log::info!("Engine initialized — empty scene, ready for model upload.");
+        // Create the ground plane with caro tile texture
+        let ground_mesh = create_ground_plane(
+            &gpu.device,
+            &gpu.queue,
+            &render_state.material_bgl,
+        );
+        scene.meshes.push(MeshInstance {
+            mesh: ground_mesh,
+            transform: Transform::new(),
+            material_index: 0,
+            source: MeshSource::EngineDefault,
+        });
+
+        log::info!("Engine initialized — ground plane ready, waiting for model upload.");
 
         self.engine = Some(EngineState {
             gpu,
@@ -261,6 +275,17 @@ impl ApplicationHandler for App {
                     .create_command_encoder(&wgpu::CommandEncoderDescriptor {
                         label: Some("Render Encoder"),
                     });
+
+                // --- Sky pass (renders first, clears framebuffer) ---
+                engine.render_state.render_sky(
+                    &engine.gpu,
+                    &engine.camera_uniform,
+                    &mut encoder,
+                    &view,
+                    engine.light_settings.directional.direction,
+                    engine.light_settings.directional.color,
+                    engine.light_settings.directional.intensity,
+                );
 
                 // --- 3D scene pass ---
                 engine.render_state.render_scene(

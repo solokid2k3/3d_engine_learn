@@ -45,6 +45,7 @@ impl Camera {
 #[derive(Debug, Copy, Clone, Pod, Zeroable)]
 pub struct CameraUniform {
     pub view_proj: [[f32; 4]; 4],
+    pub inv_view_proj: [[f32; 4]; 4],
     pub view_pos: [f32; 4], // camera position (w=1 for padding)
 }
 
@@ -52,12 +53,15 @@ impl CameraUniform {
     pub fn new() -> Self {
         Self {
             view_proj: Mat4::IDENTITY.to_cols_array_2d(),
+            inv_view_proj: Mat4::IDENTITY.to_cols_array_2d(),
             view_pos: [0.0; 4],
         }
     }
 
     pub fn update_from_camera(&mut self, camera: &Camera) {
-        self.view_proj = camera.build_view_projection_matrix().to_cols_array_2d();
+        let vp = camera.build_view_projection_matrix();
+        self.view_proj = vp.to_cols_array_2d();
+        self.inv_view_proj = vp.inverse().to_cols_array_2d();
         self.view_pos = [camera.eye.x, camera.eye.y, camera.eye.z, 1.0];
     }
 }

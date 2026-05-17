@@ -4,6 +4,7 @@ use crate::camera::CameraUniform;
 use crate::gpu::context::GpuContext;
 use crate::gpu::texture::Texture;
 use crate::renderer::pipeline::create_phong_pipeline;
+use crate::renderer::sky::SkyPass;
 use crate::scene::light::LightUniform;
 use crate::scene::material::MaterialUniform;
 use crate::scene::transform::TransformUniform;
@@ -34,6 +35,8 @@ pub struct RenderState {
     pub material_bind_group: wgpu::BindGroup,
 
     pub default_texture: Texture,
+
+    pub sky_pass: SkyPass,
 }
 
 impl RenderState {
@@ -217,6 +220,9 @@ impl RenderState {
         let depth_texture =
             Texture::create_depth_texture(device, gpu.size.width, gpu.size.height, "Depth");
 
+        // --- Sky pass ---
+        let sky_pass = SkyPass::new(device, gpu.config.format);
+
         Self {
             pipeline,
             depth_texture,
@@ -233,11 +239,34 @@ impl RenderState {
             material_buffer,
             material_bind_group,
             default_texture,
+            sky_pass,
         }
     }
 
     pub fn resize(&mut self, device: &wgpu::Device, width: u32, height: u32) {
         self.depth_texture = Texture::create_depth_texture(device, width, height, "Depth");
+    }
+
+    /// Render the sky background pass. Must be called before `render_scene`.
+    pub fn render_sky(
+        &self,
+        gpu: &GpuContext,
+        camera_uniform: &CameraUniform,
+        encoder: &mut wgpu::CommandEncoder,
+        view: &wgpu::TextureView,
+        sun_direction: [f32; 3],
+        sun_color: [f32; 3],
+        sun_intensity: f32,
+    ) {
+        self.sky_pass.render(
+            &gpu.queue,
+            encoder,
+            view,
+            camera_uniform,
+            sun_direction,
+            sun_color,
+            sun_intensity,
+        );
     }
 
     /// Render the 3D scene into the given encoder. Returns the surface texture and view
@@ -271,12 +300,7 @@ impl RenderState {
                     view,
                     resolve_target: None,
                     ops: wgpu::Operations {
-                        load: wgpu::LoadOp::Clear(wgpu::Color {
-                            r: 0.05,
-                            g: 0.05,
-                            b: 0.08,
-                            a: 1.0,
-                        }),
+                        load: wgpu::LoadOp::Load,
                         store: wgpu::StoreOp::Store,
                     },
                     depth_slice: None,

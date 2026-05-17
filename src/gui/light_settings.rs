@@ -87,11 +87,7 @@ impl LightSettings {
         Self {
             panel_visible: false,
             directional: DirectionalLightSettings::default(),
-            point_lights: vec![
-                PointLightSettings::new("Cyan Orbit", [4.0, 2.5, 0.0], [0.3, 0.8, 1.0], 2.5),
-                PointLightSettings::new("Magenta Orbit", [-3.5, 1.5, 0.0], [1.0, 0.3, 0.7], 2.0),
-                PointLightSettings::new("Gold Pulse", [0.0, 3.0, 0.0], [1.0, 0.85, 0.4], 1.5),
-            ],
+            point_lights: vec![],
             environment: EnvironmentSettings::default(),
         }
     }
