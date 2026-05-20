@@ -14,6 +14,8 @@ pub struct ModelManager {
     pub is_loading: bool,
     /// Name of the file currently being loaded (for display).
     pub loading_filename: String,
+    /// Currently selected model's group ID, if any.
+    pub selected_group_id: Option<u32>,
 }
 
 /// A model that was loaded at runtime.
@@ -34,6 +36,7 @@ impl ModelManager {
             pending_remove: Vec::new(),
             is_loading: false,
             loading_filename: String::new(),
+            selected_group_id: None,
         }
     }
 
@@ -288,18 +291,47 @@ fn draw_loaded_models(ui: &mut Ui, manager: &mut ModelManager) {
             .strong(),
     );
 
+    // Show Deselect button if a model is selected
+    if let Some(selected_gid) = manager.selected_group_id {
+        if let Some(selected_model) = manager.models.iter().find(|m| m.group_id == selected_gid) {
+            ui.horizontal(|ui| {
+                ui.label(
+                    RichText::new(format!("Selected: {}", selected_model.filename))
+                        .color(Color32::from_rgb(255, 150, 40))
+                        .strong(),
+                );
+                if ui.small_button("Deselect").clicked() {
+                    manager.selected_group_id = None;
+                }
+            });
+            ui.separator();
+        }
+    }
+
     let mut remove_idx: Option<usize> = None;
 
     for (i, model) in manager.models.iter_mut().enumerate() {
-        let header_text = format!(
+        let is_selected = manager.selected_group_id == Some(model.group_id);
+        let mut header_text = RichText::new(format!(
             "{}  ({} mesh{})",
             model.filename,
             model.mesh_count,
             if model.mesh_count == 1 { "" } else { "es" }
-        );
+        ));
+
+        if is_selected {
+            header_text = RichText::new(format!(
+                "⭐ {}  ({} mesh{})",
+                model.filename,
+                model.mesh_count,
+                if model.mesh_count == 1 { "" } else { "es" }
+            ))
+            .color(Color32::from_rgb(255, 150, 40))
+            .strong();
+        }
 
         let id = ui.make_persistent_id(format!("user_model_{}", model.group_id));
-        egui::CollapsingHeader::new(RichText::new(header_text))
+        let response = egui::CollapsingHeader::new(header_text)
             .id_salt(id)
             .default_open(true)
             .show(ui, |ui| {
@@ -384,6 +416,10 @@ fn draw_loaded_models(ui: &mut Ui, manager: &mut ModelManager) {
                     );
                 });
             });
+
+        if response.header_response.clicked() {
+            manager.selected_group_id = Some(model.group_id);
+        }
     }
 
     // Process removals

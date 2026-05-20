@@ -7,6 +7,8 @@ pub struct Mesh {
     /// Per-mesh material bind group (texture + material uniform).
     /// When `Some`, the renderer uses this instead of the shared default.
     pub material_bind_group: Option<wgpu::BindGroup>,
+    pub aabb_min: [f32; 3],
+    pub aabb_max: [f32; 3],
 }
 
 impl Mesh {
@@ -30,12 +32,30 @@ impl Mesh {
             usage: wgpu::BufferUsages::INDEX,
         });
 
+        let mut aabb_min = [f32::INFINITY; 3];
+        let mut aabb_max = [f32::NEG_INFINITY; 3];
+        for v in vertices {
+            aabb_min[0] = aabb_min[0].min(v.position[0]);
+            aabb_min[1] = aabb_min[1].min(v.position[1]);
+            aabb_min[2] = aabb_min[2].min(v.position[2]);
+
+            aabb_max[0] = aabb_max[0].max(v.position[0]);
+            aabb_max[1] = aabb_max[1].max(v.position[1]);
+            aabb_max[2] = aabb_max[2].max(v.position[2]);
+        }
+        if vertices.is_empty() {
+            aabb_min = [0.0, 0.0, 0.0];
+            aabb_max = [0.0, 0.0, 0.0];
+        }
+
         Self {
             vertex_buffer,
             index_buffer,
             num_indices: indices.len() as u32,
             name: name.to_string(),
             material_bind_group: None,
+            aabb_min,
+            aabb_max,
         }
     }
 }

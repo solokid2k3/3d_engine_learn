@@ -47,6 +47,8 @@ pub struct CameraUniform {
     pub view_proj: [[f32; 4]; 4],
     pub inv_view_proj: [[f32; 4]; 4],
     pub view_pos: [f32; 4], // camera position (w=1 for padding)
+    pub camera_right: [f32; 4],
+    pub camera_up: [f32; 4],
 }
 
 impl CameraUniform {
@@ -55,6 +57,8 @@ impl CameraUniform {
             view_proj: Mat4::IDENTITY.to_cols_array_2d(),
             inv_view_proj: Mat4::IDENTITY.to_cols_array_2d(),
             view_pos: [0.0; 4],
+            camera_right: [1.0, 0.0, 0.0, 0.0],
+            camera_up: [0.0, 1.0, 0.0, 0.0],
         }
     }
 
@@ -63,5 +67,11 @@ impl CameraUniform {
         self.view_proj = vp.to_cols_array_2d();
         self.inv_view_proj = vp.inverse().to_cols_array_2d();
         self.view_pos = [camera.eye.x, camera.eye.y, camera.eye.z, 1.0];
+
+        let forward = (camera.target - camera.eye).normalize();
+        let right = forward.cross(camera.up).normalize();
+        let up = right.cross(forward).normalize();
+        self.camera_right = [right.x, right.y, right.z, 0.0];
+        self.camera_up = [up.x, up.y, up.z, 0.0];
     }
 }

@@ -22,6 +22,12 @@ use crate::scene::ground::create_ground_plane;
 use crate::scene::transform::Transform;
 use crate::scene::{MeshInstance, MeshSource, Scene};
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DragMode {
+    Translate,
+    Rotate,
+}
+
 /// Engine state that is initialized after the window is created.
 struct EngineState {
     gpu: GpuContext,
@@ -38,6 +44,9 @@ struct EngineState {
     last_frame_time: Instant,
     /// Tracks Tab key state to detect press (not hold).
     tab_was_pressed: bool,
+    active_drag_mode: Option<DragMode>,
+    particle_system: crate::scene::particle::ParticleSystem,
+    emitter_selected: bool,
 }
 
 /// Top-level application handler for winit 0.30+.
@@ -124,6 +133,9 @@ impl ApplicationHandler for App {
             start_time: Instant::now(),
             last_frame_time: Instant::now(),
             tab_was_pressed: false,
+            active_drag_mode: None,
+            particle_system: crate::scene::particle::ParticleSystem::fire(),
+            emitter_selected: false,
         });
     }
 
@@ -178,6 +190,52 @@ impl ApplicationHandler for App {
             WindowEvent::MouseInput { button, state, .. } => {
                 if !egui_consumed && !engine.egui.wants_pointer_input() {
                     engine.input.process_mouse_button(button, state);
+
+                    if state.is_pressed() {
+                        if button == winit::event::MouseButton::Left || button == winit::event::MouseButton::Right {
+                            if engine.emitter_selected {
+                                if button == winit::event::MouseButton::Left {
+                                    engine.active_drag_mode = Some(DragMode::Translate);
+                                } else {
+                                    engine.active_drag_mode = Some(DragMode::Rotate);
+                                }
+                            } else {
+                                let (width, height) = (engine.gpu.size.width as f32, engine.gpu.size.height as f32);
+                                let view_proj = engine.camera.build_view_projection_matrix();
+                                let inv_view_proj = view_proj.inverse();
+
+                                let hit_gid = crate::scene::picking::pick_object(
+                                    engine.input.mouse_position.x,
+                                    engine.input.mouse_position.y,
+                                    width,
+                                    height,
+                                    inv_view_proj,
+                                    &engine.scene,
+                                );
+
+                                if let Some(gid) = hit_gid {
+                                    engine.model_manager.selected_group_id = Some(gid);
+                                    if button == winit::event::MouseButton::Left {
+                                        engine.active_drag_mode = Some(DragMode::Translate);
+                                    } else {
+                                        engine.active_drag_mode = Some(DragMode::Rotate);
+                                    }
+                                } else {
+                                    if button == winit::event::MouseButton::Left {
+                                        engine.model_manager.selected_group_id = None;
+                                    }
+                                    engine.active_drag_mode = None;
+                                }
+                            }
+                        }
+                    } else {
+                        if button == winit::event::MouseButton::Left && engine.active_drag_mode == Some(DragMode::Translate) {
+                            engine.active_drag_mode = None;
+                        }
+                        if button == winit::event::MouseButton::Right && engine.active_drag_mode == Some(DragMode::Rotate) {
+                            engine.active_drag_mode = None;
+                        }
+                    }
                 }
             }
 
@@ -186,6 +244,64 @@ impl ApplicationHandler for App {
                     engine
                         .input
                         .process_mouse_move((position.x, position.y));
+
+                    // If dragging the emitter, handle the movement
+                    if engine.emitter_selected {
+                        if let Some(drag_mode) = engine.active_drag_mode {
+                            let forward = (engine.camera.target - engine.camera.eye).normalize();
+                            let right = forward.cross(engine.camera.up).normalize();
+                            let up = right.cross(forward).normalize();
+                            let distance = (engine.camera.target - engine.camera.eye).length();
+
+                            match drag_mode {
+                                DragMode::Translate => {
+                                    let speed = 0.005 * distance.max(0.5);
+                                    let dx = engine.input.mouse_delta.x;
+                                    let dy = engine.input.mouse_delta.y;
+
+                                    let world_delta = right * (dx * speed) + up * (-dy * speed);
+                                    engine.particle_system.position.x += world_delta.x;
+                                    engine.particle_system.position.y += world_delta.y;
+                                    engine.particle_system.position.z += world_delta.z;
+                                }
+                                DragMode::Rotate => {}
+                            }
+                        }
+                    } else if let Some(selected_gid) = engine.model_manager.selected_group_id {
+                        if let Some(drag_mode) = engine.active_drag_mode {
+                            // Calculate movement delta using camera vectors
+                            let forward = (engine.camera.target - engine.camera.eye).normalize();
+                            let right = forward.cross(engine.camera.up).normalize();
+                            let up = right.cross(forward).normalize();
+                            let distance = (engine.camera.target - engine.camera.eye).length();
+
+                            if let Some(model) = engine.model_manager.models.iter_mut().find(|m| m.group_id == selected_gid) {
+                                match drag_mode {
+                                    DragMode::Translate => {
+                                        // Speed scales with distance for natural feel
+                                        let speed = 0.005 * distance.max(0.5);
+                                        let dx = engine.input.mouse_delta.x;
+                                        let dy = engine.input.mouse_delta.y;
+
+                                        let world_delta = right * (dx * speed) + up * (-dy * speed);
+                                        model.position[0] += world_delta.x;
+                                        model.position[1] += world_delta.y;
+                                        model.position[2] += world_delta.z;
+                                    }
+                                    DragMode::Rotate => {
+                                        let speed = 0.3; // degrees per pixel
+                                        let dx = engine.input.mouse_delta.x;
+                                        let dy = engine.input.mouse_delta.y;
+
+                                        // Horizontal drag -> rotate around Y (yaw)
+                                        model.rotation_deg[1] = (model.rotation_deg[1] + dx * speed) % 360.0;
+                                        // Vertical drag -> rotate around X (pitch)
+                                        model.rotation_deg[0] = (model.rotation_deg[0] + dy * speed) % 360.0;
+                                    }
+                                }
+                            }
+                        }
+                    }
                 }
             }
 
@@ -235,7 +351,11 @@ impl ApplicationHandler for App {
                 let dt = now.duration_since(engine.last_frame_time).as_secs_f32();
                 engine.last_frame_time = now;
 
-                engine.orbit.update(&engine.input, &mut engine.camera, dt);
+                engine.particle_system.update(dt);
+
+                if engine.active_drag_mode.is_none() {
+                    engine.orbit.update(&engine.input, &mut engine.camera, dt);
+                }
                 engine
                     .camera_uniform
                     .update_from_camera(&engine.camera);
@@ -294,6 +414,10 @@ impl ApplicationHandler for App {
                     &engine.scene,
                     &mut encoder,
                     &view,
+                    engine.model_manager.selected_group_id,
+                    &engine.particle_system.particles,
+                    engine.particle_system.settings.blend_mode,
+                    engine.particle_system.settings.render_type,
                 );
 
                 // --- egui overlay pass ---
@@ -302,6 +426,12 @@ impl ApplicationHandler for App {
                 draw_model_panel(
                     &engine.egui.ctx,
                     &mut engine.model_manager,
+                    engine.light_settings.panel_visible,
+                );
+                crate::gui::vfx_panel::draw_vfx_panel(
+                    &engine.egui.ctx,
+                    &mut engine.particle_system,
+                    &mut engine.emitter_selected,
                     engine.light_settings.panel_visible,
                 );
                 let egui_cmd = engine.egui.end_frame_and_render(

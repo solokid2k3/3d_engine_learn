@@ -2,6 +2,8 @@ pub mod ground;
 pub mod light;
 pub mod material;
 pub mod mesh;
+pub mod particle;
+pub mod picking;
 pub mod transform;
 
 use crate::scene::light::LightUniform;
